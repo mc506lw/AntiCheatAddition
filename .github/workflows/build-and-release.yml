@@ -1,0 +1,86 @@
+# .github/workflows/build-and-release.yml
+
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+        
+    - name: Build with Maven
+      run: mvn clean package
+      
+    - name: Get project info
+      id: project_info
+      run: |
+        VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        ARTIFACT_ID=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "ARTIFACT_ID=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+        echo "TIMESTAMP=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+        
+    - name: Find JAR file
+      id: find_jar
+      run: |
+        JAR_FILE=$(find target -name "*.jar" -not -name "*-sources.jar" -not -name "*-javadoc.jar" | head -n 1)
+        echo "JAR_FILE=$JAR_FILE" >> $GITHUB_OUTPUT
+        
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.project_info.outputs.VERSION }}-${{ steps.project_info.outputs.TIMESTAMP }}
+        release_name: Release v${{ steps.project_info.outputs.VERSION }} (${{ steps.project_info.outputs.TIMESTAMP }})
+        draft: false
+        prerelease: false
+        body: |
+          ## Release v${{ steps.project_info.outputs.VERSION }}
+          
+          Automated release created by GitHub Actions on ${{ steps.project_info.outputs.TIMESTAMP }}
+          
+          ### Build Information
+          - **Java Version**: 21
+          - **Artifact ID**: ${{ steps.project_info.outputs.ARTIFACT_ID }}
+          - **Version**: ${{ steps.project_info.outputs.VERSION }}
+          
+          ### Changes
+          - Automated build and deployment
+          - Built with Maven and Java 21
+          
+    - name: Upload Release Asset
+      if: steps.find_jar.outputs.JAR_FILE != ''
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ steps.find_jar.outputs.JAR_FILE }}
+        asset_name: ${{ steps.project_info.outputs.ARTIFACT_ID }}-v${{ steps.project_info.outputs.VERSION }}.jar
+        asset_content_type: application/java-archive
+        
+    - name: Upload build artifacts
+      if: steps.find_jar.outputs.JAR_FILE != ''
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ steps.project_info.outputs.ARTIFACT_ID }}-v${{ steps.project_info.outputs.VERSION }}
+        path: ${{ steps.find_jar.outputs.JAR_FILE }}
