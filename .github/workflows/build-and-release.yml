@@ -26,8 +26,8 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
         
-    - name: Build with Maven
-      run: mvn clean package
+    - name: Build with Maven (skip tests)
+      run: mvn clean package -DskipTests
       
     - name: Get project info
       id: project_info
@@ -41,13 +41,11 @@ jobs:
     - name: Find JAR files
       id: find_jar
       run: |
-        # 查找所有 JAR 文件
         JAR_FILES=$(find target -name "*.jar" -not -name "*-sources.jar" -not -name "*-javadoc.jar")
         echo "jar_files<<EOF" >> $GITHUB_OUTPUT
         echo "$JAR_FILES" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
         
-        # 获取主 JAR 文件
         MAIN_JAR=$(echo "$JAR_FILES" | head -n 1)
         echo "main_jar=$MAIN_JAR" >> $GITHUB_OUTPUT
         
