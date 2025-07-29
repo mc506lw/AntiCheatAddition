@@ -5,6 +5,7 @@ name: Build and Release
 on:
   push:
     branches:
+      - main
       - master
 
 permissions:
@@ -37,22 +38,24 @@ jobs:
         echo "ARTIFACT_ID=$ARTIFACT_ID" >> $GITHUB_OUTPUT
         echo "TIMESTAMP=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
         
-    - name: Find JAR file
+    - name: Find JAR files
       id: find_jar
       run: |
-        JAR_FILE=$(find target -name "*.jar" -not -name "*-sources.jar" -not -name "*-javadoc.jar" | head -n 1)
-        echo "JAR_FILE=$JAR_FILE" >> $GITHUB_OUTPUT
+        # 查找所有 JAR 文件
+        JAR_FILES=$(find target -name "*.jar" -not -name "*-sources.jar" -not -name "*-javadoc.jar")
+        echo "jar_files<<EOF" >> $GITHUB_OUTPUT
+        echo "$JAR_FILES" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        # 获取主 JAR 文件
+        MAIN_JAR=$(echo "$JAR_FILES" | head -n 1)
+        echo "main_jar=$MAIN_JAR" >> $GITHUB_OUTPUT
         
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: v${{ steps.project_info.outputs.VERSION }}-${{ steps.project_info.outputs.TIMESTAMP }}
-        release_name: Release v${{ steps.project_info.outputs.VERSION }} (${{ steps.project_info.outputs.TIMESTAMP }})
-        draft: false
-        prerelease: false
+        name: Release v${{ steps.project_info.outputs.VERSION }} (${{ steps.project_info.outputs.TIMESTAMP }})
         body: |
           ## Release v${{ steps.project_info.outputs.VERSION }}
           
@@ -66,21 +69,17 @@ jobs:
           ### Changes
           - Automated build and deployment
           - Built with Maven and Java 21
-          
-    - name: Upload Release Asset
-      if: steps.find_jar.outputs.JAR_FILE != ''
-      uses: actions/upload-release-asset@v1
+        files: |
+          ${{ steps.find_jar.outputs.main_jar }}
+        draft: false
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{ steps.find_jar.outputs.JAR_FILE }}
-        asset_name: ${{ steps.project_info.outputs.ARTIFACT_ID }}-v${{ steps.project_info.outputs.VERSION }}.jar
-        asset_content_type: application/java-archive
         
-    - name: Upload build artifacts
-      if: steps.find_jar.outputs.JAR_FILE != ''
-      uses: actions/upload-artifact@v3
+    - name: Upload all artifacts
+      if: steps.find_jar.outputs.jar_files != ''
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ steps.project_info.outputs.ARTIFACT_ID }}-v${{ steps.project_info.outputs.VERSION }}
-        path: ${{ steps.find_jar.outputs.JAR_FILE }}
+        name: ${{ steps.project_info.outputs.ARTIFACT_ID }}-build-artifacts
+        path: |
+          ${{ steps.find_jar.outputs.jar_files }}
